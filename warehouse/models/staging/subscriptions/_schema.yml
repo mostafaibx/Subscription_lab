@@ -1,0 +1,306 @@
+version: 2
+
+# =============================================================================
+# SOURCES - Raw data from billing system
+# =============================================================================
+
+sources:
+  - name: raw
+    description: "Raw subscription data from the billing system"
+    schema: raw  # Adjust to your actual raw schema name
+    tables:
+      - name: raw_customers
+        description: "Customer master data"
+        columns:
+          - name: customer_id
+            description: "Unique customer identifier"
+            tests:
+              - unique
+              - not_null
+          - name: customer_name
+            description: "Company or customer name"
+          - name: customer_segment
+            description: "Business segment (SMB, Mid-Market, Enterprise)"
+          - name: country
+            description: "Country code (DE, NL, FR)"
+          - name: created_at
+            description: "When the customer was created (UTC)"
+          - name: is_test_account
+            description: "Whether this is a test account"
+
+      - name: raw_plans
+        description: "Subscription plan definitions"
+        columns:
+          - name: plan_id
+            description: "Unique plan identifier"
+            tests:
+              - unique
+              - not_null
+          - name: plan_name
+            description: "Human-readable plan name"
+          - name: currency
+            description: "Billing currency (EUR)"
+          - name: billing_period_months
+            description: "Billing cycle length (1=monthly, 12=annual)"
+          - name: price_per_period
+            description: "Price charged per billing period"
+          - name: mrr_equivalent
+            description: "Monthly equivalent revenue"
+          - name: is_active
+            description: "Whether the plan is currently offered"
+
+      - name: raw_subscriptions
+        description: "Subscription records"
+        columns:
+          - name: subscription_id
+            description: "Unique subscription identifier"
+            tests:
+              - unique
+              - not_null
+          - name: customer_id
+            description: "Foreign key to customers"
+            tests:
+              - not_null
+          - name: plan_id
+            description: "Current plan (may change via upgrades)"
+          - name: status
+            description: "Current status (active, canceled, paused)"
+          - name: start_at
+            description: "Subscription start datetime (UTC)"
+          - name: canceled_at
+            description: "When subscription was canceled (null if active)"
+          - name: pause_start_at
+            description: "When subscription was paused"
+          - name: pause_end_at
+            description: "When subscription was resumed"
+          - name: current_period_start
+            description: "Current billing period start date"
+          - name: current_period_end
+            description: "Current billing period end date"
+          - name: auto_renew
+            description: "Whether subscription auto-renews"
+          - name: created_at
+            description: "Record creation timestamp"
+
+      - name: raw_subscription_events
+        description: "Subscription lifecycle events"
+        columns:
+          - name: event_id
+            description: "Unique event identifier"
+            tests:
+              - unique
+              - not_null
+          - name: occurred_at
+            description: "When the event occurred (UTC)"
+          - name: effective_date
+            description: "Date the event takes effect"
+          - name: subscription_id
+            description: "Foreign key to subscriptions"
+            tests:
+              - not_null
+          - name: customer_id
+            description: "Foreign key to customers"
+          - name: event_type
+            description: "Type of event (created, canceled, paused, resumed, plan_changed, etc.)"
+          - name: old_plan_id
+            description: "Previous plan (for plan changes)"
+          - name: new_plan_id
+            description: "New plan (for plan changes)"
+          - name: reason
+            description: "Human-readable reason for the event"
+
+      - name: raw_invoices
+        description: "Invoice headers"
+        columns:
+          - name: invoice_id
+            description: "Unique invoice identifier"
+            tests:
+              - unique
+              - not_null
+          - name: issued_at
+            description: "When the invoice was issued (UTC)"
+          - name: paid_at
+            description: "When the invoice was paid (null if unpaid)"
+          - name: subscription_id
+            description: "Foreign key to subscriptions"
+          - name: customer_id
+            description: "Foreign key to customers"
+          - name: status
+            description: "Invoice status (paid, uncollectible)"
+          - name: currency
+            description: "Invoice currency"
+          - name: invoice_period_start
+            description: "Service period start date"
+          - name: invoice_period_end
+            description: "Service period end date"
+          - name: total_amount
+            description: "Total invoice amount"
+
+      - name: raw_invoice_lines
+        description: "Invoice line items"
+        columns:
+          - name: invoice_line_id
+            description: "Unique line item identifier"
+            tests:
+              - unique
+              - not_null
+          - name: invoice_id
+            description: "Foreign key to invoices"
+            tests:
+              - not_null
+          - name: subscription_id
+            description: "Foreign key to subscriptions"
+          - name: customer_id
+            description: "Foreign key to customers"
+          - name: plan_id
+            description: "Plan this line relates to"
+          - name: line_type
+            description: "Type of line (recurring_charge, proration_credit, proration_charge, adjustment)"
+          - name: amount
+            description: "Line amount (can be negative for credits)"
+          - name: service_period_start
+            description: "Service period start date"
+          - name: service_period_end
+            description: "Service period end date"
+          - name: quantity
+            description: "Quantity (usually 1)"
+          - name: description
+            description: "Line item description"
+
+
+# =============================================================================
+# STAGING MODELS - Cleaned and typed data
+# =============================================================================
+
+models:
+  - name: stg_customers
+    description: "Staged customer data with consistent typing"
+    columns:
+      - name: customer_id
+        description: "Primary key"
+        tests:
+          - unique
+          - not_null
+      - name: customer_segment
+        tests:
+          - accepted_values:
+              values: ['SMB', 'Mid-Market', 'Enterprise']
+      - name: country
+        tests:
+          - accepted_values:
+              values: ['DE', 'NL', 'FR']
+
+  - name: stg_plans
+    description: "Staged plan definitions with billing frequency"
+    columns:
+      - name: plan_id
+        description: "Primary key"
+        tests:
+          - unique
+          - not_null
+      - name: billing_frequency
+        tests:
+          - accepted_values:
+              values: ['monthly', 'annual', 'other']
+      - name: price_per_period
+        tests:
+          - not_null
+
+  - name: stg_subscriptions
+    description: "Staged subscriptions with derived status flags"
+    columns:
+      - name: subscription_id
+        description: "Primary key"
+        tests:
+          - unique
+          - not_null
+      - name: customer_id
+        tests:
+          - not_null
+          - relationships:
+              to: ref('stg_customers')
+              field: customer_id
+      - name: plan_id
+        tests:
+          - not_null
+          - relationships:
+              to: ref('stg_plans')
+              field: plan_id
+      - name: status
+        tests:
+          - accepted_values:
+              values: ['active', 'canceled', 'paused']
+
+  - name: stg_subscription_events
+    description: "Staged subscription lifecycle events"
+    columns:
+      - name: event_id
+        description: "Primary key"
+        tests:
+          - unique
+          - not_null
+      - name: subscription_id
+        tests:
+          - not_null
+          - relationships:
+              to: ref('stg_subscriptions')
+              field: subscription_id
+      - name: event_type
+        tests:
+          - accepted_values:
+              values: 
+                - created
+                - canceled
+                - paused
+                - resumed
+                - plan_changed
+                - payment_failed
+                - payment_recovered
+                - reactivated
+
+  - name: stg_invoices
+    description: "Staged invoice headers with payment status"
+    columns:
+      - name: invoice_id
+        description: "Primary key"
+        tests:
+          - unique
+          - not_null
+      - name: subscription_id
+        tests:
+          - relationships:
+              to: ref('stg_subscriptions')
+              field: subscription_id
+      - name: customer_id
+        tests:
+          - not_null
+          - relationships:
+              to: ref('stg_customers')
+              field: customer_id
+      - name: invoice_status
+        tests:
+          - accepted_values:
+              values: ['paid', 'uncollectible']
+
+  - name: stg_invoice_lines
+    description: "Staged invoice line items with type flags"
+    columns:
+      - name: invoice_line_id
+        description: "Primary key"
+        tests:
+          - unique
+          - not_null
+      - name: invoice_id
+        tests:
+          - not_null
+          - relationships:
+              to: ref('stg_invoices')
+              field: invoice_id
+      - name: line_type
+        tests:
+          - accepted_values:
+              values:
+                - recurring_charge
+                - proration_credit
+                - proration_charge
+                - adjustment
