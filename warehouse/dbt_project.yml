@@ -1,0 +1,44 @@
+name: 'subscription_analytics'
+version: '1.0.0'
+config-version: 2
+
+profile: 'subscription_analytics'
+
+model-paths: ["models"]
+analysis-paths: ["analyses"]
+test-paths: ["tests"]
+macro-paths: ["macros"]
+snapshot-paths: ["snapshots"]
+
+clean-targets:
+  - "target"
+  - "dbt_packages"
+
+# Model configurations
+models:
+  subscription_analytics:
+    staging:
+      +materialized: view
+      +schema: staging
+      +tags: ['staging']
+      subscriptions:
+        +tags: ['staging', 'subscriptions']
+    
+    intermediate:
+      +materialized: view
+      +schema: intermediate
+      +tags: ['intermediate']
+
+    marts:
+      +materialized: table
+      +schema: marts
+      +tags: ['marts']
+      core:
+        +tags: ['marts', 'core']
+      metrics:
+        +tags: ['marts', 'metrics']
+
+
+tests:
+  subscription_analytics:
+    +severity: error  # Fail build on test failures

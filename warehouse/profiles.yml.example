@@ -1,0 +1,30 @@
+# Example profiles.yml - copy to ~/.dbt/profiles.yml and update with your credentials
+
+subscription_analytics:
+  target: dev
+  outputs:
+    dev:
+      type: duckdb
+      path: 'warehouse.duckdb'
+      threads: 4
+    
+    # Alternative: BigQuery
+    # dev:
+    #   type: bigquery
+    #   method: service-account
+    #   project: your-project-id
+    #   dataset: subscription_analytics
+    #   threads: 4
+    #   keyfile: /path/to/keyfile.json
+    
+    # Alternative: Snowflake
+    # dev:
+    #   type: snowflake
+    #   account: your-account
+    #   user: your-user
+    #   password: your-password
+    #   role: your-role
+    #   database: SUBSCRIPTION_ANALYTICS
+    #   warehouse: COMPUTE_WH
+    #   schema: DEV
+    #   threads: 4
