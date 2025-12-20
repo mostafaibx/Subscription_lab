@@ -1,0 +1,79 @@
+seed: 42
+
+output_dir: "data_generation/output"
+
+currency: "EUR"
+timezone: "UTC"
+
+# Synthetic simplifications (must match docs/phase1_edge_cases.md)
+monthly_term_days: 30
+annual_term_days: 360
+
+date_range:
+  start_date: "2025-01-01"
+  end_date: "2025-12-31"
+
+sizes:
+  random_customers: 300
+  random_subscriptions: 450
+
+plans:
+  - plan_id: "P_BASIC_M_30"
+    plan_name: "Basic Monthly"
+    billing_period_months: 1
+    price_per_period: 30
+    is_active: true
+
+  - plan_id: "P_PRO_M_60"
+    plan_name: "Pro Monthly"
+    billing_period_months: 1
+    price_per_period: 60
+    is_active: true
+
+  - plan_id: "P_BASIC_A_300"
+    plan_name: "Basic Annual"
+    billing_period_months: 12
+    price_per_period: 300
+    is_active: true
+
+  - plan_id: "P_PRO_A_600"
+    plan_name: "Pro Annual"
+    billing_period_months: 12
+    price_per_period: 600
+    is_active: true
+
+randomization:
+  segments: ["SMB", "Mid-Market", "Enterprise"]
+  countries: ["DE", "NL", "FR"]
+  
+  # Event probabilities
+  prob_cancel: 0.10
+  prob_pause: 0.06
+  prob_upgrade: 0.08     # upgrades only; proration applies
+  prob_delinquent: 0.04  # payment_failed -> delinquent -> recovered
+  prob_adjustment_line: 0.03
+  prob_missing_invoice: 0.02
+  
+  # Timing ranges (in days)
+  cancel_days_min: 30
+  cancel_days_max: 180
+  pause_offset_min: 10
+  pause_offset_max: 40
+  pause_duration_min: 7
+  pause_duration_max: 21
+  delinquent_offset_min: 30
+  delinquent_offset_max: 90
+  recovery_days_min: 5
+  recovery_days_max: 15
+  upgrade_days_min: 5          # days into term before upgrade
+  adjustment_amounts: [-10, -5, 5, 10]
+
+policies:
+  # v1 policy: upgrade-only proration, immediate effect
+  proration_upgrades_only: true
+  downgrade_effective_next_renewal: true
+
+invoices:
+  pay_delay_days_min: 0
+  pay_delay_days_max: 5
+  prob_uncollectible: 0.03
