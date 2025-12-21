@@ -5,7 +5,6 @@ with source as (
 ),
 
 renamed as (
-
     select
         -- Primary key
         subscription_id,
