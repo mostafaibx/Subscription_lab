@@ -21,3 +21,442 @@ models:
         description: The calendar year of `date_day`.
       - name: month
         description: The calendar month number of `date_day`.
+  - name: int_subscription_periods
+    description: |
+      Normalizes each subscription's active coverage window so downstream
+      snapshots can expand this range daily while safely honoring cancel dates
+      and optional configured cutoff dates.
+    columns:
+      - name: subscription_id
+        description: Primary key for the model.
+        tests:
+          - unique
+          - not_null
+      - name: customer_id
+        description: Parent customer for the subscription.
+        tests:
+          - not_null
+      - name: start_date
+        description: Day-aligned subscription start date.
+      - name: cancel_date
+        description: Day-aligned cancellation timestamp (nullable for active subscriptions).
+      - name: active_from_date
+        description: Earliest effective date for daily coverage.
+        tests:
+          - not_null
+      - name: active_to_date
+        description: Latest effective date for daily coverage, honoring configured max dates when active.
+        tests:
+          - not_null
+      - name: current_period_start
+        description: Current period start aligned to a day granularity.
+      - name: current_period_end
+        description: Current period end aligned to a day granularity.
+  - name: int_subscription_status_segments
+    description: |
+      Breaks lifecycle events into non-overlapping status intervals, honoring
+      paused/delinquent zero-MRR policy and exposing the current open-ended
+      interval for downstream daily facts.
+    columns:
+      - name: subscription_id
+        description: Identifies the subscription owning the segment.
+        tests:
+          - not_null
+      - name: status
+        description: Current interval status (`active`, `paused`, `canceled`, `delinquent`).
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['active', 'paused', 'canceled', 'delinquent']
+      - name: status_start_date
+        description: Inclusive start of the status interval.
+        tests:
+          - not_null
+      - name: status_end_date
+        description: Exclusive end of the status interval (nullable for the latest segment).
+      - name: status_event_id
+        description: Event that triggered this interval.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - subscription_id
+            - status_start_date
+  - name: int_subscription_status_daily
+    description: |
+      Joins the date spine, subscription coverage windows, and status intervals
+      to produce one row per subscription per day, providing the "truth" for
+      daily status used by MRR fact models.
+    columns:
+      - name: date_day
+        description: The calendar day for this snapshot row.
+        tests:
+          - not_null
+      - name: subscription_id
+        description: Subscription identifier.
+        tests:
+          - not_null
+      - name: customer_id
+        description: Customer identifier.
+        tests:
+          - not_null
+      - name: plan_id
+        description: Plan identifier for the subscription.
+      - name: daily_status
+        description: Status on this day (`active`, `paused`, `canceled`, `delinquent`).
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['active', 'paused', 'canceled', 'delinquent']
+      - name: is_active_day
+        description: True if daily_status = 'active', false otherwise.
+        tests:
+          - not_null
+      - name: is_billable_day
+        description: True if the day should contribute to MRR (currently same as is_active_day).
+        tests:
+          - not_null
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - subscription_id
+            - date_day
+  - name: int_plan_events_timeline
+    description: |
+      Builds a clean timeline of which plan was active during which date ranges
+      for each subscription, merging creation events and plan changes into
+      non-overlapping intervals with exclusive end dates.
+    columns:
+      - name: subscription_id
+        description: Subscription identifier.
+        tests:
+          - not_null
+      - name: customer_id
+        description: Customer identifier.
+        tests:
+          - not_null
+      - name: plan_id
+        description: The plan active during this interval.
+        tests:
+          - not_null
+      - name: plan_start_date
+        description: Inclusive start date of this plan interval.
+        tests:
+          - not_null
+      - name: plan_end_date
+        description: Exclusive end date of this plan interval (nullable if currently active).
+      - name: change_type
+        description: Type of change that started this interval (`created` or `plan_changed`).
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['created', 'plan_changed']
+      - name: plan_event_id
+        description: Event ID that triggered this plan interval.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - subscription_id
+            - plan_start_date
+  - name: int_plan_daily
+    description: |
+      Expands plan intervals to daily rows by joining the date spine with
+      plan timeline, outputting one row per subscription per day with the
+      effective plan_id for MRR lookup downstream.
+    columns:
+      - name: date_day
+        description: The calendar day for this plan snapshot.
+        tests:
+          - not_null
+      - name: subscription_id
+        description: Subscription identifier.
+        tests:
+          - not_null
+      - name: customer_id
+        description: Customer identifier.
+        tests:
+          - not_null
+      - name: plan_id
+        description: The plan active on this day.
+        tests:
+          - not_null
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - subscription_id
+            - date_day
+  - name: int_mrr_contract_daily
+    description: |
+      Computes daily contract-based MRR by joining subscription status, plan
+      assignments, and plan pricing. Applies v1 policy: active status gets plan
+      MRR, all other statuses (paused/canceled/delinquent) get 0.
+    columns:
+      - name: date_day
+        description: The calendar day for this MRR snapshot.
+        tests:
+          - not_null
+      - name: subscription_id
+        description: Subscription identifier.
+        tests:
+          - not_null
+      - name: customer_id
+        description: Customer identifier for aggregation.
+        tests:
+          - not_null
+      - name: plan_id
+        description: The plan active on this day.
+        tests:
+          - not_null
+      - name: plan_name
+        description: Human-readable plan name.
+      - name: billing_frequency
+        description: Billing frequency (monthly/annual/other).
+      - name: daily_status
+        description: Status on this day (`active`, `paused`, `canceled`, `delinquent`).
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['active', 'paused', 'canceled', 'delinquent']
+      - name: is_active_day
+        description: True if daily_status = 'active'.
+        tests:
+          - not_null
+      - name: mrr
+        description: Monthly Recurring Revenue for this day (0 if not active).
+        tests:
+          - not_null
+          - dbt_utils.expression_is_true:
+              expression: ">= 0"
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - subscription_id
+            - date_day
+  - name: int_invoice_lines_enriched
+    description: |
+      Enriches invoice lines with invoice status, payment information, and plan
+      context to support proration audits, billing reconciliation, and revenue
+      analysis from the billing lens.
+    columns:
+      - name: invoice_line_id
+        description: Primary key for the invoice line.
+        tests:
+          - unique
+          - not_null
+      - name: invoice_id
+        description: Parent invoice identifier.
+        tests:
+          - not_null
+      - name: subscription_id
+        description: Subscription this line relates to.
+      - name: customer_id
+        description: Customer identifier.
+        tests:
+          - not_null
+      - name: plan_id
+        description: Plan this line relates to.
+      - name: invoice_status
+        description: Status of the parent invoice (paid/uncollectible).
+        tests:
+          - accepted_values:
+              values: ['paid', 'uncollectible']
+      - name: currency
+        description: Invoice currency.
+      - name: invoice_total_amount
+        description: Total amount of the parent invoice.
+      - name: issued_at
+        description: When the invoice was issued.
+      - name: paid_at
+        description: When the invoice was paid (nullable if unpaid).
+      - name: is_paid_invoice
+        description: True if the invoice is paid.
+        tests:
+          - not_null
+      - name: is_uncollectible
+        description: True if the invoice is uncollectible.
+        tests:
+          - not_null
+      - name: days_to_payment
+        description: Days between issue and payment.
+      - name: plan_name
+        description: Human-readable plan name.
+      - name: billing_frequency
+        description: Billing frequency of the plan (monthly/annual/other).
+      - name: billing_period_months
+        description: Billing period length in months.
+      - name: line_type
+        description: Type of line item (recurring_charge, proration_credit, proration_charge, adjustment).
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['recurring_charge', 'proration_credit', 'proration_charge', 'adjustment']
+      - name: amount
+        description: Line amount (can be negative for credits).
+        tests:
+          - not_null
+      - name: net_amount
+        description: Net amount (consistent naming, same as amount).
+        tests:
+          - not_null
+      - name: quantity
+        description: Line quantity (usually 1).
+      - name: description
+        description: Line item description.
+      - name: service_period_start
+        description: Service period start date.
+      - name: service_period_end
+        description: Service period end date.
+      - name: service_days
+        description: Number of days in the service period.
+      - name: is_recurring
+        description: True if this is a recurring charge line.
+        tests:
+          - not_null
+      - name: is_proration
+        description: True if this is any proration line.
+        tests:
+          - not_null
+      - name: is_proration_credit
+        description: True if this is a proration credit (negative).
+        tests:
+          - not_null
+      - name: is_proration_charge
+        description: True if this is a proration charge (positive).
+        tests:
+          - not_null
+      - name: is_adjustment
+        description: True if this is an adjustment line.
+        tests:
+          - not_null
+      - name: is_credit
+        description: True if the amount is negative.
+        tests:
+          - not_null
+  - name: int_first_paid_date
+    description: |
+      Identifies the first paid invoice date per customer, providing a stable
+      cohort anchor for revenue retention and activation analysis. Customers
+      with no paid invoices are excluded.
+    columns:
+      - name: customer_id
+        description: Primary key - customer identifier.
+        tests:
+          - unique
+          - not_null
+      - name: first_paid_at
+        description: Timestamp of the first paid invoice for this customer.
+        tests:
+          - not_null
+      - name: first_paid_date
+        description: Date (day-aligned) of the first paid invoice.
+        tests:
+          - not_null
+      - name: first_paid_month
+        description: Month (first day of month) of the first paid invoice for cohort assignment.
+        tests:
+          - not_null
+  - name: int_customer_mrr_daily
+    description: |
+      Aggregates subscription-level MRR to customer-level MRR per day, summing
+      across all active subscriptions. Used for NRR calculations and customer-level
+      revenue analytics.
+    columns:
+      - name: date_day
+        description: The calendar day for this MRR snapshot.
+        tests:
+          - not_null
+      - name: customer_id
+        description: Customer identifier.
+        tests:
+          - not_null
+      - name: customer_mrr
+        description: Total MRR for this customer on this day (sum of all subscriptions).
+        tests:
+          - not_null
+          - dbt_utils.expression_is_true:
+              expression: ">= 0"
+      - name: subscription_count
+        description: Number of distinct subscriptions for this customer on this day.
+        tests:
+          - not_null
+      - name: has_positive_mrr
+        description: True if customer_mrr > 0.
+        tests:
+          - not_null
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - customer_id
+            - date_day
+  - name: int_nrr_base_monthly
+    description: |
+      Converts daily customer MRR to monthly grain by capturing MRR at the first
+      and last day of each month per customer. Used for Net Revenue Retention
+      (NRR) calculations: NRR = sum(mrr_end) / sum(mrr_start) for cohort customers.
+      Uses month-end approach for clarity.
+    columns:
+      - name: customer_id
+        description: Customer identifier.
+        tests:
+          - not_null
+      - name: month
+        description: Month identifier (first day of month).
+        tests:
+          - not_null
+      - name: mrr_start
+        description: Customer MRR on the first day of the month.
+        tests:
+          - not_null
+          - dbt_utils.expression_is_true:
+              expression: ">= 0"
+      - name: mrr_end
+        description: Customer MRR on the last day of the month.
+        tests:
+          - not_null
+          - dbt_utils.expression_is_true:
+              expression: ">= 0"
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - customer_id
+            - month
+
+  - name: int_mrr_movements
+    description: |
+      Classifies customer-level MRR movement by month (new/churn/expansion/contraction/retained)
+      by comparing MRR at month start vs month end. Intended as the input for an MRR bridge.
+    columns:
+      - name: customer_id
+        description: Customer identifier.
+        tests:
+          - not_null
+      - name: month
+        description: Month identifier (first day of month).
+        tests:
+          - not_null
+      - name: mrr_start
+        description: Customer MRR on the first day of the month.
+        tests:
+          - not_null
+          - dbt_utils.expression_is_true:
+              expression: ">= 0"
+      - name: mrr_end
+        description: Customer MRR on the last day of the month.
+        tests:
+          - not_null
+          - dbt_utils.expression_is_true:
+              expression: ">= 0"
+      - name: mrr_delta
+        description: MRR change over the month (mrr_end - mrr_start).
+        tests:
+          - not_null
+      - name: movement_type
+        description: Movement classification for the month.
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['new', 'churn', 'expansion', 'contraction', 'retained', 'no_mrr']
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - customer_id
+            - month
