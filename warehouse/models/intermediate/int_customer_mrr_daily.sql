@@ -44,4 +44,3 @@ select
     subscription_count,
     has_positive_mrr
 from enriched
-order by customer_id, date_day;
