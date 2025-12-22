@@ -34,5 +34,3 @@ select
     mrr_delta,
     movement_type
 from classified
-order by customer_id, month;
-

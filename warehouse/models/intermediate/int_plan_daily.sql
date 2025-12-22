@@ -84,4 +84,3 @@ select
     customer_id,
     plan_id
 from final
-order by subscription_id, date_day;

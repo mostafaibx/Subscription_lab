@@ -142,4 +142,3 @@ select
     is_adjustment,
     is_credit
 from enriched
-order by invoice_id, invoice_line_id;

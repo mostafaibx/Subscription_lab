@@ -64,4 +64,3 @@ select
     mrr_start,
     mrr_end
 from combined
-order by customer_id, month;

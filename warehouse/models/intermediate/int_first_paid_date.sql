@@ -32,4 +32,3 @@ select
     first_paid_date,
     first_paid_month
 from enriched
-order by customer_id;

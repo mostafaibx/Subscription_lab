@@ -88,4 +88,3 @@ select
     is_active_day,
     is_billable_day
 from final
-order by subscription_id, date_day;

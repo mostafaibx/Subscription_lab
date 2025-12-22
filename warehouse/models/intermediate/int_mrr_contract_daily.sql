@@ -85,4 +85,3 @@ select
     is_active_day,
     mrr
 from final
-order by subscription_id, date_day;

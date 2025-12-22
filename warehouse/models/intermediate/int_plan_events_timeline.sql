@@ -111,4 +111,3 @@ select
     event_id as plan_event_id
 from plan_intervals
 where plan_end_date is null or plan_start_date < plan_end_date
-order by subscription_id, plan_start_date;
