@@ -21,7 +21,7 @@
 
 with date_range as (
     select
-        generate_series('{{ start_date }}'::date, '{{ end_date }}'::date, interval '1 day')::date as date_day
+        unnest(generate_series('{{ start_date }}'::date, '{{ end_date }}'::date, interval '1 day'))::date as date_day
 )
 
 select
