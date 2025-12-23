@@ -75,17 +75,36 @@ Cleans raw data with consistent typing, naming conventions, and pre-computed boo
 
 ## Testing
 
-```bash
-dbt test                              # Run all tests
-dbt test --select staging             # Test staging only
-dbt test --select tag:primary_key     # Test PKs only
-```
+This project uses **deterministic edge cases** (S001-S018) with known expected values.
 
-Test coverage includes:
-- Primary key integrity (`unique` + `not_null`)
-- Foreign key relationships
-- Enum value validation
-- Business rule assertions
+### Test Layers
+
+| Layer | Type | Purpose |
+|-------|------|---------|
+| **Schema Tests** | YAML-based | PK/FK integrity, enum validation, `mrr >= 0` |
+| **Edge Case Tests** | SQL singular | Prove specific business scenarios work correctly |
+
+### What the Tests Prove
+
+| Test | Scenario | Business Rule |
+|------|----------|---------------|
+| `test_s001_monthly_mrr_correctness` | Happy path | Monthly MRR = plan price |
+| `test_s002_annual_mrr_normalization` | Annual plan | MRR = annual price ÷ 12 |
+| `test_s003_cancel_stops_mrr` | Churn | MRR = 0 after cancel date |
+| `test_s005_proration_pairing` | Upgrade | Proration credit + charge exist |
+| `test_s009_downgrade_at_renewal` | Downgrade | No mid-cycle MRR change |
+| `test_s011_pause_mrr_zero` | Pause/resume | MRR = 0 during pause window |
+| `test_s013_cancel_reactivate` | Reactivation | MRR returns after reactivate |
+| `test_s014_delinquent_mrr_zero` | Payment failure | MRR = 0 during delinquent window |
+| `test_invoices_total_reconcile` | Billing audit | Invoice total = sum(lines) |
+
+### Running Tests
+
+```bash
+dbt test                              # Run all 200+ tests
+dbt test --select test_type:singular  # Run edge case tests only
+dbt test --select fct_mrr_daily       # Test a specific model
+```
 
 ## Commands Reference
 
@@ -127,7 +146,7 @@ A summary of concepts applied across this project. See each layer's README for d
 - NRR (Net Revenue Retention) foundations
 
 **Testing & Quality**
-- Primary and composite key validation
-- Referential integrity checks
-- Enum validation with `accepted_values`
-- Business rule assertions (`mrr >= 0`)
+- Deterministic test data with known expected values (S001-S018)
+- Schema tests: PK/FK integrity, enum validation, expression rules
+- Singular tests: Edge case assertions for billing logic
+- 200+ automated tests covering MRR, proration, state transitions
