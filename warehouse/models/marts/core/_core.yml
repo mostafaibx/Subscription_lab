@@ -1,0 +1,300 @@
+version: 2
+
+models:
+  # ============================================================================
+  # DIMENSIONS
+  # ============================================================================
+
+  - name: dim_date
+    description: |
+      Date dimension table providing calendar attributes for all dates in the analysis range.
+      **Grain**: One row per calendar date (date_day).
+    columns:
+      - name: date_day
+        description: Primary key. The calendar date.
+        tests:
+          - unique
+          - not_null
+      - name: year
+        description: The year as an integer (e.g., 2024).
+        tests:
+          - not_null
+      - name: month
+        description: The month as an integer (1-12).
+        tests:
+          - not_null
+      - name: day_of_month
+        description: The day of the month (1-31).
+        tests:
+          - not_null
+      - name: month_start_date
+        description: The first day of the month.
+        tests:
+          - not_null
+      - name: month_end_date
+        description: The last day of the month.
+        tests:
+          - not_null
+      - name: year_month_int
+        description: Year and month as an integer for sorting (e.g., 202412).
+        tests:
+          - not_null
+      - name: month_key
+        description: Year-month as a string for display (e.g., '2024-12').
+        tests:
+          - not_null
+
+  - name: dim_customer
+    description: |
+      Customer dimension table containing customer attributes and first paid date information.
+      **Grain**: One row per customer_id.
+    columns:
+      - name: customer_id
+        description: Primary key. Unique identifier for the customer.
+        tests:
+          - unique
+          - not_null
+      - name: customer_name
+        description: Name of the customer.
+      - name: customer_segment
+        description: Business segment classification (e.g., SMB, Enterprise).
+      - name: country
+        description: Customer's country.
+      - name: created_at
+        description: Timestamp when the customer record was created.
+      - name: is_test_account
+        description: Boolean flag indicating if this is a test account (should be excluded from reporting).
+      - name: first_paid_date
+        description: Date of the customer's first paid invoice. Null if never paid.
+      - name: first_paid_month
+        description: First day of the month when the customer first paid. Null if never paid.
+
+  - name: dim_plan
+    description: |
+      Plan dimension table containing subscription plan details and pricing.
+      **Grain**: One row per plan_id.
+    columns:
+      - name: plan_id
+        description: Primary key. Unique identifier for the plan.
+        tests:
+          - unique
+          - not_null
+      - name: plan_name
+        description: Display name of the plan.
+      - name: currency
+        description: Currency code for plan pricing (e.g., USD).
+      - name: billing_period_months
+        description: Number of months in each billing period (1 = monthly, 12 = annual).
+      - name: price_per_period
+        description: Full price charged per billing period.
+      - name: mrr_equivalent
+        description: Monthly Recurring Revenue equivalent (price_per_period / billing_period_months).
+      - name: is_active
+        description: Boolean flag indicating if the plan is currently available for new subscriptions.
+      - name: billing_frequency
+        description: Billing frequency category derived from billing_period_months.
+        tests:
+          - accepted_values:
+              values: ['monthly', 'annual', 'other']
+
+  - name: dim_subscription
+    description: |
+      Subscription dimension table containing current state of each subscription.
+      Historical status/plan changes are tracked in fct_subscription_events and fct_mrr_daily.
+      **Grain**: One row per subscription_id.
+    columns:
+      - name: subscription_id
+        description: Primary key. Unique identifier for the subscription.
+        tests:
+          - unique
+          - not_null
+      - name: customer_id
+        description: Foreign key to dim_customer. The customer who owns this subscription.
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_customer')
+              field: customer_id
+      - name: start_date
+        description: Date when the subscription started.
+        tests:
+          - not_null
+      - name: cancel_date
+        description: Date when the subscription was canceled. Null if not canceled.
+      - name: auto_renew
+        description: Boolean indicating if the subscription auto-renews.
+      - name: current_plan_id
+        description: Foreign key to dim_plan. The current plan for this subscription.
+        tests:
+          - relationships:
+              to: ref('dim_plan')
+              field: plan_id
+      - name: current_period_start
+        description: Start date of the current billing period.
+      - name: current_period_end
+        description: End date of the current billing period.
+      - name: current_status
+        description: Current status of the subscription.
+        tests:
+          - accepted_values:
+              values: ['active', 'paused', 'canceled', 'delinquent']
+
+  # ============================================================================
+  # FACTS
+  # ============================================================================
+
+  - name: fct_mrr_daily
+    description: |
+      Daily MRR (Monthly Recurring Revenue) fact table. The main fact for MRR trends and KPIs.
+      MRR is contract-based from int_mrr_contract_daily.
+      **Grain**: One row per subscription_id per date_day.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - subscription_id
+            - date_day
+    columns:
+      - name: date_day
+        description: Foreign key to dim_date. The calendar date for this MRR snapshot.
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_date')
+              field: date_day
+      - name: subscription_id
+        description: Foreign key to dim_subscription. The subscription for this MRR record.
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_subscription')
+              field: subscription_id
+      - name: customer_id
+        description: Foreign key to dim_customer. Denormalized for convenience in reporting.
+        tests:
+          - not_null
+      - name: plan_id
+        description: Foreign key to dim_plan. The plan active on this date.
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_plan')
+              field: plan_id
+      - name: daily_status
+        description: Status of the subscription on this date.
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['active', 'paused', 'canceled', 'delinquent']
+      - name: mrr
+        description: Monthly Recurring Revenue amount for this subscription on this date. Zero if not active.
+        tests:
+          - not_null
+          - dbt_utils.expression_is_true:
+              expression: ">= 0"
+              config:
+                severity: error
+
+  - name: fct_subscription_events
+    description: |
+      Subscription lifecycle events fact table. Records all state changes for subscriptions.
+      **Grain**: One row per event_id.
+    columns:
+      - name: event_id
+        description: Primary key. Unique identifier for the event.
+        tests:
+          - unique
+          - not_null
+      - name: occurred_at
+        description: Timestamp when the event occurred.
+        tests:
+          - not_null
+      - name: effective_date
+        description: Date when the event takes effect (may differ from occurred_at).
+      - name: subscription_id
+        description: Foreign key to dim_subscription. The subscription this event relates to.
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_subscription')
+              field: subscription_id
+      - name: customer_id
+        description: Foreign key to dim_customer. Denormalized for convenience.
+        tests:
+          - not_null
+      - name: event_type
+        description: Type of subscription event.
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['created', 'canceled', 'paused', 'resumed', 'reactivated', 'plan_changed', 'payment_failed', 'payment_recovered', 'renewed']
+      - name: old_plan_id
+        description: Previous plan_id for plan_changed events. Null for other event types.
+      - name: new_plan_id
+        description: New plan_id for plan_changed events. Null for other event types.
+      - name: reason
+        description: Optional reason or notes associated with the event.
+
+  - name: fct_invoice_lines
+    description: |
+      Invoice line items fact table. Supports proration and billing audit analysis.
+      **Grain**: One row per invoice_line_id.
+    tests:
+      - dbt_utils.expression_is_true:
+          expression: "amount <= 0"
+          where: "line_type = 'proration_credit'"
+          config:
+            severity: warn
+      - dbt_utils.expression_is_true:
+          expression: "amount >= 0"
+          where: "line_type = 'proration_charge'"
+          config:
+            severity: warn
+    columns:
+      - name: invoice_line_id
+        description: Primary key. Unique identifier for the invoice line.
+        tests:
+          - unique
+          - not_null
+      - name: invoice_id
+        description: Parent invoice identifier.
+        tests:
+          - not_null
+      - name: subscription_id
+        description: Foreign key to dim_subscription. The subscription this line relates to.
+        tests:
+          - not_null
+      - name: customer_id
+        description: Foreign key to dim_customer. Denormalized for convenience.
+        tests:
+          - not_null
+      - name: plan_id
+        description: Foreign key to dim_plan. The plan this line charges for.
+        tests:
+          - relationships:
+              to: ref('dim_plan')
+              field: plan_id
+      - name: issued_at
+        description: Timestamp when the invoice was issued.
+      - name: paid_at
+        description: Timestamp when the invoice was paid. Null if unpaid.
+      - name: invoice_status
+        description: Current status of the parent invoice.
+      - name: line_type
+        description: Type of invoice line item.
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['recurring_charge', 'proration_credit', 'proration_charge', 'adjustment']
+      - name: amount
+        description: Amount for this line item. Negative for credits.
+        tests:
+          - not_null
+      - name: service_period_start
+        description: Start date of the service period this line covers.
+      - name: service_period_end
+        description: End date of the service period this line covers.
+      - name: is_paid_invoice
+        description: Boolean indicating if the parent invoice has been paid.
+      - name: is_proration
+        description: Boolean indicating if this is a proration line (credit or charge).
+
