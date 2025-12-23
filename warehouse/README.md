@@ -2,6 +2,8 @@
 
 A complete dbt project that transforms raw subscription billing data into analytics-ready models for MRR tracking, churn analysis, and customer lifecycle metrics.
 
+This project demonstrates subscription analytics patterns I studied and implemented to deepen my understanding of MRR modeling, temporal data, and dbt best practices.
+
 ## Quick Start
 
 ```bash
@@ -99,3 +101,33 @@ dbt docs generate && dbt docs serve   # View documentation
 - **Profile**: Copy `profiles.yml` to `~/.dbt/profiles.yml`
 - **Database**: DuckDB (local), Snowflake, or BigQuery
 - **Packages**: `dbt-utils` for date spine and testing utilities
+
+---
+
+## Concepts Used
+
+A summary of concepts applied across this project. See each layer's README for detailed explanations.
+
+**dbt & Data Engineering**
+- Layered architecture (staging → intermediate → marts)
+- `source()` and `ref()` for lineage tracking
+- YAML-based testing and documentation
+- Materialization strategy (views vs tables)
+
+**Data Modeling**
+- Dimensional modeling (star schema)
+- Grain definition and enforcement
+- SCD Type 2 concepts (status intervals, event-driven tracking)
+- Temporal modeling with date spines
+
+**Subscription Analytics**
+- MRR calculation and daily snapshots
+- Movement classification (new/churn/expansion/contraction)
+- Customer cohort assignment
+- NRR (Net Revenue Retention) foundations
+
+**Testing & Quality**
+- Primary and composite key validation
+- Referential integrity checks
+- Enum validation with `accepted_values`
+- Business rule assertions (`mrr >= 0`)
