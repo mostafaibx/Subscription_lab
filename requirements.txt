@@ -1,0 +1,5 @@
+-r data_generation/requirements.txt
+duckdb>=0.10.0,<2.0.0
+dbt-core>=1.7.0,<2.0.0
+dbt-duckdb>=1.7.0,<2.0.0
+
