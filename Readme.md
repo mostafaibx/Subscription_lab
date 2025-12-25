@@ -1,5 +1,8 @@
 # Subscription Metrics Lab
 
+[![CI](https://github.com/mostafaibx/Subscription_lab/actions/workflows/ci.yml/badge.svg)](https://github.com/mostafaibx/Subscription_lab/actions/workflows/ci.yml)
+[![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/mostafaibx/Subscription_lab)
+
 An end-to-end **subscription analytics project** that transforms raw billing events into SaaS KPIs (MRR, churn, NRR, cohorts) using **dbt + DuckDB** and delivers insights via **Power BI**.
 
 Built to demonstrate data modeling, analytics engineering, and BI delivery skills.
@@ -98,14 +101,22 @@ Built a semantic model on the star schema with DAX measures for:
 
 ## Quick Start
 
-**Option 1: One command (recommended)**
+**Try without cloning** — click the Codespaces badge above, then run `make build` in the terminal.
+
+**Or clone locally:**
 ```bash
+git clone https://github.com/YOUR_USERNAME/Subscription_lab.git
+cd Subscription_lab
 make build   # install deps → generate → load → dbt build
+```
+
+**Other commands:**
+```bash
 make clean   # reset all generated artifacts
 make help    # show all available commands
 ```
 
-**Option 2: Step by step**
+**Step by step (manual):**
 ```bash
 # 1. Generate synthetic data
 cd data_generation
