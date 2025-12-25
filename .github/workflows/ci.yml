@@ -5,6 +5,7 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch:  # Allows manual trigger from GitHub Actions UI
 
 jobs:
   build:
@@ -19,14 +20,11 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Install dbt
-        run: pip install dbt-core dbt-duckdb
+      - name: Install dependencies
+        run: pip install -r requirements.txt
 
       - name: Generate synthetic data
-        run: |
-          cd data_generation
-          pip install -r requirements.txt
-          python generate.py
+        run: python data_generation/generate.py
 
       - name: Load data into DuckDB
         run: python scripts/load_duckdb_raw.py
