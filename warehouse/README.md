@@ -27,8 +27,7 @@ warehouse/
 │   ├── staging/subscriptions/    # Clean & type raw data
 │   ├── intermediate/             # Business logic & daily snapshots
 │   └── marts/
-│       ├── core/                 # Dimensional model (dims + facts)
-│       └── metrics/              # KPI aggregations
+│       └── core/                 # Dimensional model (dims + facts)
 ├── macros/                       # Reusable SQL functions
 ├── tests/                        # Custom data tests
 └── snapshots/                    # SCD Type 2 tracking
