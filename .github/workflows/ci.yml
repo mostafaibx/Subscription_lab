@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dbt
+        run: pip install dbt-core dbt-duckdb
+
+      - name: Generate synthetic data
+        run: |
+          cd data_generation
+          pip install -r requirements.txt
+          python generate.py
+
+      - name: Load data into DuckDB
+        run: python scripts/load_duckdb_raw.py
+
+      - name: Install dbt packages
+        run: cd warehouse && dbt deps
+
+      - name: Run dbt build (models + tests)
+        run: cd warehouse && dbt build
+
+      - name: Upload dbt artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dbt-artifacts
+          path: |
+            warehouse/target/manifest.json
+            warehouse/target/run_results.json
+          retention-days: 7
