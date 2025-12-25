@@ -29,11 +29,24 @@ jobs:
       - name: Load data into DuckDB
         run: python scripts/load_duckdb_raw.py
 
+      - name: Create dbt profile for CI
+        run: |
+          mkdir -p ~/.dbt
+          echo "subscription_analytics:
+            target: dev
+            outputs:
+              dev:
+                type: duckdb
+                path: warehouse.duckdb
+                threads: 4" > ~/.dbt/profiles.yml
+
       - name: Install dbt packages
-        run: cd warehouse && dbt deps
+        working-directory: warehouse
+        run: dbt deps
 
       - name: Run dbt build (models + tests)
-        run: cd warehouse && dbt build
+        working-directory: warehouse
+        run: dbt build
 
       - name: Upload dbt artifacts
         if: always()
