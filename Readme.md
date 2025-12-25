@@ -98,6 +98,14 @@ Built a semantic model on the star schema with DAX measures for:
 
 ## Quick Start
 
+**Option 1: One command (recommended)**
+```bash
+make build   # install deps → generate → load → dbt build
+make clean   # reset all generated artifacts
+make help    # show all available commands
+```
+
+**Option 2: Step by step**
 ```bash
 # 1. Generate synthetic data
 cd data_generation
@@ -112,6 +120,9 @@ dbt deps
 dbt build   # runs models + 200+ tests
 ```
 
+### CI/CD
+This project includes GitHub Actions CI that runs the full pipeline on every PR and push to `main`.
+
 ---
 
 ## Project Structure
@@ -119,6 +130,8 @@ dbt build   # runs models + 200+ tests
 ```
 Subscription_lab/
 ├── README.md                    # ← You are here
+├── Makefile                     # Build automation (make build, make clean)
+├── .github/workflows/ci.yml     # GitHub Actions CI pipeline
 ├── data_generation/             # Synthetic data generator
 │   ├── generate.py              # Entry point
 │   ├── edge_cases.py            # S001-S018 deterministic scenarios
